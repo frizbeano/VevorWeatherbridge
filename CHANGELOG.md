@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.1
 
 ### Added
 - Integration icon, shown in Home Assistant 2026.3 and newer.
