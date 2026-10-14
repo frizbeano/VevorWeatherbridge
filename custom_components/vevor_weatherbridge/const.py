@@ -10,6 +10,8 @@ MODEL: Final = "7-in-1 Weather Station"
 
 # The station always uploads to this path on port 80 (Weather Underground protocol).
 UPDATE_PATH: Final = "/weatherstation/updateweatherstation.php"
+# Matched case-insensitively against the end of the path, as firmwares vary.
+UPDATE_PATH_SUFFIX: Final = "/updateweatherstation.php"
 DEFAULT_PORT: Final = 80
 DEFAULT_NAME: Final = "Weather Station"
 

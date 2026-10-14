@@ -145,6 +145,8 @@ Sensors are grouped under one device and go unavailable when the relay is stoppe
   2. Check the listener: `curl http://<home-assistant-ip>/` should return `404: Not Found` from the integration, not time out.
   3. Restart the station after changing DNS. It can keep using the old address for a while.
   4. If you set a station ID filter, look in the Home Assistant log for "Ignoring uploads from station ID ...".
+  5. Look in the Home Assistant log for "Received ... which isn't a weather station upload". It means the station *is* reaching Home Assistant but uses a request format this integration doesn't understand yet. Please open an issue with that log line. The same requests are listed under `unrecognized_requests` in diagnostics.
+  6. Turn on [debug logging](#troubleshooting) to see every upload as it arrives.
 - **"Last update" has a value, but some sensors are missing.** The station doesn't send those values. Download diagnostics to see exactly what it sends.
 - **Integration fails to set up with "Cannot listen on port 80".** Another service is using port 80. See [About port 80](#configuration).
 - **Debug logging** for the integration:

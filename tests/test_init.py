@@ -105,6 +105,41 @@ async def test_bad_values_ignored(hass: HomeAssistant, mock_config_entry: MockCo
     assert hass.states.get("sensor.backyard_last_update").state != STATE_UNAVAILABLE
 
 
+async def test_post_and_path_variants(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """Test uploads sent with POST or a different path case are accepted."""
+    await _setup(hass, mock_config_entry)
+    port = mock_config_entry.data[CONF_PORT]
+    async with (
+        ClientSession() as session,
+        session.post(
+            f"http://127.0.0.1:{port}/WeatherStation/UpdateWeatherStation.php",
+            data={"tempf": "68", "dateutc": "now"},
+        ) as resp,
+    ):
+        assert resp.status == 200
+        assert (await resp.text()).strip() == "success"
+    await hass.async_block_till_done()
+    assert float(hass.states.get("sensor.backyard_temperature").state) == pytest.approx(20.0)
+
+
+async def test_unrecognized_request_logged(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test requests that aren't uploads are logged once and kept for diagnostics."""
+    await _setup(hass, mock_config_entry)
+    port = mock_config_entry.data[CONF_PORT]
+    async with ClientSession() as session:
+        for _ in range(2):
+            async with session.get(f"http://127.0.0.1:{port}/data/report/") as resp:
+                assert resp.status == 404
+
+    assert caplog.text.count("Received GET /data/report/") == 1
+    requests = mock_config_entry.runtime_data.unrecognized_requests
+    assert [r["path"] for r in requests] == ["/data/report/", "/data/report/"]
+
+
 async def test_station_id_filter(hass: HomeAssistant, free_port: int) -> None:
     """Test uploads from other stations are ignored."""
     entry = MockConfigEntry(

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2
+
+### Added
+- Requests that aren't weather station uploads are now logged, once per path, and listed in diagnostics. Previously they were silently ignored, which made a misconfigured station impossible to troubleshoot.
+- Debug logging now shows each upload's source and field names.
+
+### Changed
+- Uploads sent with POST, or to the upload path in different letter case, are now accepted.
+
 ## 1.0.1
 
 ### Added

@@ -25,4 +25,5 @@ async def async_get_config_entry_diagnostics(
         "last_update": station.last_update,
         "software": station.software,
         "last_upload": station.last_params,
+        "unrecognized_requests": list(station.unrecognized_requests),
     }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
 from datetime import datetime
 import ipaddress
@@ -20,6 +21,7 @@ from .const import (
     SECRET_PARAMS,
     STALE_AFTER,
     UPDATE_PATH,
+    UPDATE_PATH_SUFFIX,
     WU_DOH_URLS,
     WU_HOST,
     WU_MIN_DNS_TTL,
@@ -80,6 +82,8 @@ class WeatherStation:
         self._runner: web.AppRunner | None = None
         self._stale_unsub: CALLBACK_TYPE | None = None
         self._rejected_ids: set[str | None] = set()
+        # Recent requests that weren't uploads, for troubleshooting via diagnostics.
+        self.unrecognized_requests: deque[dict[str, str]] = deque(maxlen=10)
 
     @property
     def available(self) -> bool:
@@ -89,7 +93,9 @@ class WeatherStation:
     async def async_start(self) -> None:
         """Start the HTTP listener the station uploads to."""
         app = web.Application()
-        app.router.add_get(UPDATE_PATH, self._handle_request)
+        # Catch every request: firmwares vary in path case and method, and logging
+        # the ones we don't understand is the only way to troubleshoot them.
+        app.router.add_route("*", "/{path:.*}", self._handle_request)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         try:
@@ -109,9 +115,45 @@ class WeatherStation:
             self._runner = None
 
     async def _handle_request(self, request: web.Request) -> web.Response:
-        """Handle an upload. Always answer `success` so the station never retries."""
-        self.async_process_upload(request.query)
+        """Handle a request. Answer uploads with `success` so the station never retries."""
+        if not request.path.lower().endswith(UPDATE_PATH_SUFFIX):
+            self._log_unrecognized(request)
+            raise web.HTTPNotFound
+
+        query: dict[str, str] = dict(request.query)
+        if request.method == "POST":
+            query.update({k: v for k, v in (await request.post()).items() if isinstance(v, str)})
+        _LOGGER.debug(
+            "Upload from %s (%s %s) with fields: %s",
+            request.remote,
+            request.method,
+            request.path,
+            ", ".join(sorted(k for k in query if k.lower() not in SECRET_PARAMS)),
+        )
+        self.async_process_upload(query)
         return web.Response(text="success\n")
+
+    def _log_unrecognized(self, request: web.Request) -> None:
+        """Log a request that isn't an upload, once per method and path."""
+        entry = {
+            "time": dt_util.utcnow().isoformat(),
+            "remote": request.remote or "",
+            "method": request.method,
+            "path": request.path,
+        }
+        if not any(
+            seen["method"] == entry["method"] and seen["path"] == entry["path"]
+            for seen in self.unrecognized_requests
+        ):
+            _LOGGER.warning(
+                "Received %s %s from %s, which isn't a weather station upload "
+                "(expected %s). If this is your station, please report it",
+                request.method,
+                request.path,
+                request.remote,
+                UPDATE_PATH,
+            )
+        self.unrecognized_requests.append(entry)
 
     @callback
     def async_process_upload(self, query: Mapping[str, str]) -> None:
