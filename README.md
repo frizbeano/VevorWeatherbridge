@@ -1,6 +1,6 @@
 # VEVOR Weatherbridge
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frizbeano&repository=VevorWeatherbridge&category=integration)
 [![Validate](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/validate.yml/badge.svg)](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/validate.yml)
 [![Tests](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/tests.yml/badge.svg)](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/tests.yml)
 
@@ -20,6 +20,18 @@ There are two ways to run it:
 ## Home Assistant integration (HACS)
 
 ### Installation
+
+**Quick install.** These buttons open your own Home Assistant instance:
+
+1. Open the repository in HACS, then download it and restart Home Assistant:
+
+   [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frizbeano&repository=VevorWeatherbridge&category=integration)
+
+2. Add the integration:
+
+   [![Open your Home Assistant instance and start setting up VEVOR Weatherbridge.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=vevor_weatherbridge)
+
+**Manual install:**
 
 1. In Home Assistant, open **HACS → ⋮ → Custom repositories**.
 2. Add `https://github.com/frizbeano/VevorWeatherbridge` with type **Integration**.
