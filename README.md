@@ -89,7 +89,14 @@ This step is needed for both installation methods.
 
    If your router has **DNS rebind protection**, allow this domain, or the override will be blocked.
 
-2. In the station's app or setup page, enable **Weather Underground** uploads. Any station ID and key works, unless you also want to forward to a real Weather Underground account.
+2. Turn on Weather Underground uploads on the station. **Connecting the station to Wi-Fi is not enough.** It sends nothing until this is set.
+   1. Put the console into Wi-Fi setup mode, the same way you first connected it. This is usually a long press on the Wi-Fi or SET button; see the station's manual.
+   2. Connect to the station's own hotspot and open its setup page. This is usually `http://192.168.4.1`.
+   3. Tick **Upload to wunderground.com**.
+   4. Enter any **Station ID** and **Key**, for example `HOME1` and `abc123`. If you set a station ID filter in the integration, the ID must match it.
+   5. Save or apply, and let the station rejoin your Wi-Fi.
+
+   If you also want your data on Weather Underground, enter a real Weather Underground station ID and key instead, and turn on forwarding in the integration's options.
 
 The station then sends requests like:
 
@@ -140,24 +147,67 @@ Sensors are grouped under one device and go unavailable when the relay is stoppe
 
 ## Troubleshooting
 
-- **Only the "Last update" diagnostic sensor appears, and it's unavailable.** No uploads have reached Home Assistant yet. Measurement sensors are only created when the first upload arrives.
-  1. Check where the hostname points: `nslookup rtupdate.wunderground.com`. It must return your **Home Assistant** IP. A leftover override pointing at an old relay host is a common cause.
-  2. Check the listener: `curl http://<home-assistant-ip>/` should return `404: Not Found` from the integration, not time out.
-  3. Restart the station after changing DNS. It can keep using the old address for a while.
-  4. If you set a station ID filter, look in the Home Assistant log for "Ignoring uploads from station ID ...".
-  5. Look in the Home Assistant log for "Received ... which isn't a weather station upload". It means the station *is* reaching Home Assistant but uses a request format this integration doesn't understand yet. Please open an issue with that log line. The same requests are listed under `unrecognized_requests` in diagnostics.
-  6. Turn on [debug logging](#troubleshooting) to see every upload as it arrives.
+### No sensors, only "Last update"
+
+The measurement sensors are only created when the first upload arrives, so this means no upload has been accepted yet. Go through these checks in order. The first two account for most cases.
+
+1. **Upload is not enabled on the station.** Joining the station to Wi-Fi does not turn on uploads. In the station's setup page, tick **Upload to wunderground.com** and fill in a station ID and key. See [Station and DNS setup](#station-and-dns-setup).
+
+2. **The DNS override points at the wrong IP.** Run `nslookup rtupdate.wunderground.com`. It must return your **Home Assistant** IP. Two mistakes are common: entering the *station's* own IP, and leaving an old entry from a previous relay host.
+
+3. **The station is still using the old address.** Power-cycle the station after changing DNS.
+
+4. **The station ID filter doesn't match.** If you set one, look in the Home Assistant log for `Ignoring uploads from station ID …`. Either match the ID on the station or clear the filter with **Reconfigure**.
+
+5. **The station uses a format the integration doesn't recognize.** Look in the log for `Received … which isn't a weather station upload`. The station *is* reaching Home Assistant, but its request isn't recognized. Please [open an issue](https://github.com/frizbeano/VevorWeatherbridge/issues) with that log line. The same requests are listed under `unrecognized_requests` in diagnostics.
+
+6. **DNS rebind protection** on your router or Pi-hole is blocking the override, because it resolves a public hostname to a private IP. Add `rtupdate.wunderground.com` to the allowed domains.
+
+### Narrow down where the problem is
+
+Check each link in the chain from another computer on the same network:
+
+```bash
+# 1. DNS: must print your Home Assistant IP
+nslookup rtupdate.wunderground.com
+
+# 2. Listener: must print "404: Not Found" (that's the integration answering), not time out
+curl http://<home-assistant-ip>/
+
+# 3. Full path: send one test upload exactly as the station would. Must print "success".
+#    Use your station ID filter's value for ID, if you set one.
+curl "http://rtupdate.wunderground.com/weatherstation/updateweatherstation.php?ID=HOME1&PASSWORD=test&dateutc=now&tempf=59&humidity=70"
+```
+
+If step 3 creates Temperature and Humidity sensors, the integration and DNS work, and the problem is on the station (check 1 above). The test values are replaced by the station's next real upload.
+
+The log messages map to the problem like this:
+
+| Log message | Meaning |
+| --- | --- |
+| *(nothing at all)* | Nothing is reaching Home Assistant: check upload is enabled, then DNS. |
+| `Ignoring uploads from station ID X` | Station ID filter mismatch. |
+| `Received GET /… which isn't a weather station upload` | Unrecognized format. Please open an issue. |
+| `Upload from … with fields: …` (debug) | Uploads are arriving normally. |
+
+### Other problems
+
 - **"Last update" has a value, but some sensors are missing.** The station doesn't send those values. Download diagnostics to see exactly what it sends.
-- **Integration fails to set up with "Cannot listen on port 80".** Another service is using port 80. See [About port 80](#configuration).
-- **Debug logging** for the integration:
+- **Sensors go unavailable after a while.** The station stopped uploading for 15 minutes. Check its Wi-Fi signal and power.
+- **Integration fails to set up with "Cannot listen on port 80".** Another service on the Home Assistant host is using port 80. See [About port 80](#configuration).
+- **Weather Underground forwarding fails.** The log says why. "Rejected (HTTP 401)" means the Weather Underground station ID or key is wrong.
 
-  ```yaml
-  logger:
-    logs:
-      custom_components.vevor_weatherbridge: debug
-  ```
+### Debug logging and diagnostics
 
-- **Diagnostics.** Download them from the integration's device page. They include the last upload, with the station ID and key removed.
+Turn on debug logging to see every upload as it arrives. Either use **Enable debug logging** on the integration's page, or add this to `configuration.yaml`:
+
+```yaml
+logger:
+  logs:
+    custom_components.vevor_weatherbridge: debug
+```
+
+**Diagnostics** can be downloaded from the device page. They include the last upload and any unrecognized requests, with the station ID and key removed. Attach them when opening an issue.
 
 ---
 
