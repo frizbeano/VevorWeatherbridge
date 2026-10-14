@@ -1,3 +1,5 @@
+<img src="custom_components/vevor_weatherbridge/brand/icon.png" alt="" width="96" align="right">
+
 # VEVOR Weatherbridge
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frizbeano&repository=VevorWeatherbridge&category=integration)
@@ -159,6 +161,10 @@ pip install -r requirements_test.txt
 pytest
 ruff check . && ruff format --check .
 ```
+
+### Icon
+
+The integration icon is in `custom_components/vevor_weatherbridge/brand/`. Home Assistant 2026.3 and newer load it from there; older versions show a placeholder. To change it, edit `assets/icon.svg` and export it as a trimmed, transparent square PNG at 256×256 (`icon.png`) and 512×512 (`icon@2x.png`).
 
 ### Releasing
 

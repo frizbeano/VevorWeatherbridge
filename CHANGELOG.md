@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Integration icon, shown in Home Assistant 2026.3 and newer.
+
 ## 1.0.0
 
 First release of this fork of [C9H13NO3-dev/VevorWeatherbridge](https://github.com/C9H13NO3-dev/VevorWeatherbridge).
