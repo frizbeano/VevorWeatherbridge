@@ -18,7 +18,7 @@ jobs:
       - run: ruff format --check
 
   pytest:
-    name: Pytest
+    name: Integration tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,4 +28,40 @@ jobs:
           cache: pip
           cache-dependency-path: requirements_test.txt
       - run: pip install -r requirements_test.txt
-      - run: pytest
+      - run: >-
+          pytest
+          --cov=custom_components.vevor_weatherbridge
+          --cov-report=term-missing
+          --cov-fail-under=90
+
+  relay:
+    name: Relay tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements_relay_test.txt
+      - run: pip install -r requirements_relay_test.txt
+      # The asyncio options in pyproject.toml are for the integration tests only.
+      - run: pytest relay_tests -W ignore::pytest.PytestConfigWarning
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t vevor-weatherbridge .
+      - name: Smoke test
+        run: |
+          # No broker is running: the relay must still start and answer uploads.
+          docker run -d --name relay -p 8080:80 -e MQTT_HOST=127.0.0.1 vevor-weatherbridge
+          for i in $(seq 1 20); do
+            body=$(curl -sf "http://localhost:8080/weatherstation/updateweatherstation.php?ID=CI&tempf=68" || true)
+            [ "$body" = "success" ] && break
+            sleep 1
+          done
+          docker logs relay
+          [ "$body" = "success" ]

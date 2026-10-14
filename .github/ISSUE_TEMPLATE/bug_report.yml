@@ -1,0 +1,70 @@
+name: Bug report
+description: Something isn't working, such as sensors missing, setup failing, or wrong values.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Most setup problems are covered in the
+        [troubleshooting guide](https://github.com/frizbeano/VevorWeatherbridge#troubleshooting).
+        In particular, check that **Upload to wunderground.com** is ticked on the station.
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Home Assistant integration (HACS)
+        - Standalone Docker relay (MQTT)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Integration or relay version
+      placeholder: "1.0.2"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.10.1"
+    validations:
+      required: true
+  - type: input
+    id: station
+    attributes:
+      label: Weather station model
+      description: Model number from the console or box, and the firmware version if shown.
+      placeholder: "VEVOR YT60234"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Troubleshooting already done
+      options:
+        - label: "**Upload to wunderground.com** is ticked on the station, with a station ID and key filled in"
+        - label: "`nslookup rtupdate.wunderground.com` returns my Home Assistant IP"
+        - label: The test upload in the troubleshooting guide returns `success`
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: |
+        Lines from **Settings → System → Logs** that mention `vevor`, ideally with
+        [debug logging](https://github.com/frizbeano/VevorWeatherbridge#debug-logging-and-diagnostics) on.
+      render: text
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Download them from the device page (⋮ → Download diagnostics) and drag the file here.
+        The station ID and key are removed automatically.
