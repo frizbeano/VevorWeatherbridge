@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
+import ipaddress
 import logging
 import math
+import time
 
-from aiohttp import ClientError, ClientSession, ClientTimeout, TCPConnector, web
-from aiohttp.resolver import AsyncResolver
+from aiohttp import ClientError, ClientSession, ClientTimeout, web
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -19,9 +20,10 @@ from .const import (
     SECRET_PARAMS,
     STALE_AFTER,
     UPDATE_PATH,
-    WU_NAMESERVERS,
+    WU_DOH_URLS,
+    WU_HOST,
+    WU_MIN_DNS_TTL,
     WU_TIMEOUT,
-    WU_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,6 +79,7 @@ class WeatherStation:
         self.forwarder: WundergroundForwarder | None = None
         self._runner: web.AppRunner | None = None
         self._stale_unsub: CALLBACK_TYPE | None = None
+        self._rejected_ids: set[str | None] = set()
 
     @property
     def available(self) -> bool:
@@ -104,8 +107,6 @@ class WeatherStation:
         if self._runner:
             await self._runner.cleanup()
             self._runner = None
-        if self.forwarder:
-            await self.forwarder.async_close()
 
     async def _handle_request(self, request: web.Request) -> web.Response:
         """Handle an upload. Always answer `success` so the station never retries."""
@@ -117,8 +118,14 @@ class WeatherStation:
         """Parse an upload, update state and notify entities."""
         params = {key.lower(): value for key, value in query.items()}
 
-        if self.station_id and params.get("id") != self.station_id:
-            _LOGGER.debug("Ignoring upload from unexpected station %s", params.get("id"))
+        if self.station_id and (station := params.get("id")) != self.station_id:
+            if station not in self._rejected_ids:
+                self._rejected_ids.add(station)
+                _LOGGER.warning(
+                    "Ignoring uploads from station ID %s: the station ID filter only accepts %s",
+                    station,
+                    self.station_id,
+                )
             return
 
         self.data = {
@@ -150,16 +157,53 @@ class WeatherStation:
 class WundergroundForwarder:
     """Forward uploads to Weather Underground.
 
-    Uses its own session with a resolver pointed at public DNS: the local DNS
-    normally redirects the Weather Underground hostname back to Home Assistant,
-    which would loop the upload back to ourselves.
+    The local DNS points the Weather Underground hostname back at Home
+    Assistant, and many routers also intercept plain DNS sent to public
+    servers. So the real address is looked up with DNS-over-HTTPS, which can't
+    be intercepted, and the upload is sent to that IP with the proper Host
+    header.
     """
 
-    def __init__(self, station_id: str | None, station_key: str | None) -> None:
+    def __init__(
+        self, session: ClientSession, station_id: str | None, station_key: str | None
+    ) -> None:
         """Initialize the forwarder."""
+        self._session = session
         self._station_id = station_id
         self._station_key = station_key
-        self._session: ClientSession | None = None
+        self._address: str | None = None
+        self._address_expires = 0.0
+
+    async def _async_resolve(self) -> str | None:
+        """Return Weather Underground's public IP address, cached for its TTL."""
+        if self._address and time.monotonic() < self._address_expires:
+            return self._address
+        for url in WU_DOH_URLS:
+            try:
+                async with self._session.get(
+                    url,
+                    params={"name": WU_HOST, "type": "A"},
+                    headers={"Accept": "application/dns-json"},
+                    timeout=ClientTimeout(total=WU_TIMEOUT),
+                ) as resp:
+                    answer = await resp.json(content_type=None)
+            except (ClientError, TimeoutError, ValueError) as err:
+                _LOGGER.debug("DNS-over-HTTPS lookup via %s failed: %s", url, err)
+                continue
+            for record in answer.get("Answer", []):
+                if record.get("type") != 1:  # A record
+                    continue
+                try:
+                    address = ipaddress.ip_address(record["data"])
+                except (KeyError, ValueError):
+                    continue
+                if address.is_global:
+                    self._address = str(address)
+                    self._address_expires = time.monotonic() + max(
+                        int(record.get("TTL", 0)), WU_MIN_DNS_TTL
+                    )
+                    return self._address
+        return None
 
     async def async_forward(self, query: Mapping[str, str]) -> None:
         """Send one upload to Weather Underground."""
@@ -169,16 +213,23 @@ class WundergroundForwarder:
         if self._station_key:
             params["PASSWORD"] = self._station_key
 
-        if self._session is None:
-            self._session = ClientSession(
-                connector=TCPConnector(resolver=AsyncResolver(nameservers=WU_NAMESERVERS)),
-                timeout=ClientTimeout(total=WU_TIMEOUT),
+        if (address := await self._async_resolve()) is None:
+            _LOGGER.warning(
+                "Not forwarding to Weather Underground: could not look up a public address for %s",
+                WU_HOST,
             )
+            return
         try:
-            async with self._session.get(WU_URL, params=params) as resp:
+            async with self._session.get(
+                f"http://{address}{UPDATE_PATH}",
+                params=params,
+                headers={"Host": WU_HOST},
+                timeout=ClientTimeout(total=WU_TIMEOUT),
+            ) as resp:
                 body = (await resp.text()).strip()
         except (ClientError, TimeoutError) as err:
             _LOGGER.warning("Failed to forward to Weather Underground: %s", err)
+            self._address = None  # look the address up again next time
             return
         if resp.status != 200 or body.lower() != "success":
             _LOGGER.warning(
@@ -186,9 +237,3 @@ class WundergroundForwarder:
                 resp.status,
                 body[:200],
             )
-
-    async def async_close(self) -> None:
-        """Close the HTTP session."""
-        if self._session:
-            await self._session.close()
-            self._session = None

@@ -8,13 +8,13 @@ have an MQTT broker).
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import ipaddress
 import json
 import logging
 import math
 import os
 from zoneinfo import ZoneInfo
 
-import dns.resolver
 from flask import Flask, request
 import paho.mqtt.client as mqtt
 import requests
@@ -43,6 +43,7 @@ WU_USERNAME = os.environ.get("WU_USERNAME")
 WU_PASSWORD = os.environ.get("WU_PASSWORD")
 
 WU_HOST = "rtupdate.wunderground.com"
+WU_DOH_URLS = ["https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"]
 UPDATE_PATH = "/weatherstation/updateweatherstation.php"
 AVAILABILITY_TOPIC = f"vevor_weatherbridge/{DEVICE_ID}/availability"
 
@@ -218,21 +219,51 @@ class Publisher:
         )
 
 
+def resolve_wunderground() -> str | None:
+    """Look up WU's public address with DNS-over-HTTPS.
+
+    Plain DNS can't be trusted here: the local DNS points the hostname at this
+    relay, and many routers intercept DNS sent to public servers too.
+    """
+    for url in WU_DOH_URLS:
+        try:
+            resp = requests.get(
+                url,
+                params={"name": WU_HOST, "type": "A"},
+                headers={"Accept": "application/dns-json"},
+                timeout=10,
+            )
+            answers = resp.json().get("Answer", [])
+        except (requests.RequestException, ValueError) as err:
+            _LOGGER.debug("DNS-over-HTTPS lookup via %s failed: %s", url, err)
+            continue
+        for record in answers:
+            if record.get("type") != 1:
+                continue
+            try:
+                address = ipaddress.ip_address(record["data"])
+            except (KeyError, ValueError):
+                continue
+            if address.is_global:
+                return str(address)
+    return None
+
+
 def forward_to_wunderground(query: dict[str, str]) -> None:
-    """Forward the upload, resolving WU via public DNS to bypass the local override."""
+    """Forward the upload to Weather Underground's real address."""
     params = dict(query)
     if WU_USERNAME:
         params["ID"] = WU_USERNAME
     if WU_PASSWORD:
         params["PASSWORD"] = WU_PASSWORD
+    if (address := resolve_wunderground()) is None:
+        _LOGGER.warning("Not forwarding: could not look up a public address for %s", WU_HOST)
+        return
     try:
-        resolver = dns.resolver.Resolver(configure=False)
-        resolver.nameservers = ["8.8.8.8", "1.1.1.1"]
-        wu_ip = resolver.resolve(WU_HOST, "A")[0].to_text()
         resp = requests.get(
-            f"http://{wu_ip}{UPDATE_PATH}", params=params, headers={"Host": WU_HOST}, timeout=10
+            f"http://{address}{UPDATE_PATH}", params=params, headers={"Host": WU_HOST}, timeout=10
         )
-    except (dns.exception.DNSException, requests.RequestException) as err:
+    except requests.RequestException as err:
         _LOGGER.warning("Failed to forward to Weather Underground: %s", err)
         return
     if resp.status_code != 200 or resp.text.strip().lower() != "success":

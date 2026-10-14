@@ -4,6 +4,10 @@
 
 ### Added
 - Integration icon, shown in Home Assistant 2026.3 and newer.
+- A warning is logged when the station ID filter rejects uploads.
+
+### Fixed
+- Weather Underground forwarding looped back to the local network on routers that intercept DNS sent to public servers. The address is now looked up with DNS-over-HTTPS, and private addresses are never used. This applies to both the integration and the Docker relay; the relay no longer needs `dnspython`.
 
 ## 1.0.0
 

@@ -1,18 +1,21 @@
 """Tests for receiving uploads end to end."""
 
 from datetime import timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from aiohttp import ClientSession
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.vevor_weatherbridge.const import (
     CONF_STATION_ID,
     CONF_WU_FORWARD,
     CONF_WU_STATION_ID,
     UPDATE_PATH,
+    WU_DOH_URLS,
+    WU_HOST,
 )
 from custom_components.vevor_weatherbridge.station import (
     WundergroundForwarder,
@@ -21,6 +24,7 @@ from custom_components.vevor_weatherbridge.station import (
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PORT, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 UPLOAD = {
     "ID": "ABC123",
@@ -179,16 +183,41 @@ async def test_forwarding(hass: HomeAssistant, free_port: int) -> None:
     assert forward.call_args.args[0]["PASSWORD"] == "hunter2"
 
 
-async def test_forwarder_overrides_credentials() -> None:
-    """Test configured Weather Underground credentials replace the station's."""
-    forwarder = WundergroundForwarder("KXX1", "key")
-    resp = AsyncMock(status=200, text=AsyncMock(return_value="success"))
-    session = MagicMock()
-    session.get.return_value.__aenter__.return_value = resp
-    forwarder._session = session
+def _doh_answer(address: str) -> dict:
+    return {"Status": 0, "Answer": [{"name": WU_HOST, "type": 1, "TTL": 60, "data": address}]}
+
+
+async def test_forwarder_overrides_credentials(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Test uploads go to the DNS-over-HTTPS address with configured credentials."""
+    aioclient_mock.get(WU_DOH_URLS[0], json=_doh_answer("34.0.0.1"))
+    aioclient_mock.get(f"http://34.0.0.1{UPDATE_PATH}", text="success")
+    forwarder = WundergroundForwarder(async_get_clientsession(hass), "KXX1", "key")
 
     await forwarder.async_forward({"ID": "ABC", "PASSWORD": "pw", "tempf": "1"})
-    assert session.get.call_args.kwargs["params"] == {"ID": "KXX1", "PASSWORD": "key", "tempf": "1"}
+    await forwarder.async_forward({"ID": "ABC", "PASSWORD": "pw", "tempf": "2"})
+
+    # The address is cached, so DNS is only queried once.
+    calls = [call for call in aioclient_mock.mock_calls if call[1].host == "34.0.0.1"]
+    assert aioclient_mock.call_count == 3
+    _method, url, _data, headers = calls[0]
+    assert dict(url.query) == {"ID": "KXX1", "PASSWORD": "key", "tempf": "1"}
+    assert headers["Host"] == WU_HOST
+
+
+async def test_forwarder_refuses_private_address(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test a hijacked lookup pointing at the LAN is never used."""
+    for url in WU_DOH_URLS:
+        aioclient_mock.get(url, json=_doh_answer("192.168.0.36"))
+    forwarder = WundergroundForwarder(async_get_clientsession(hass), None, None)
+
+    await forwarder.async_forward({"tempf": "1"})
+
+    assert aioclient_mock.call_count == len(WU_DOH_URLS)
+    assert "could not look up a public address" in caplog.text
 
 
 @pytest.mark.parametrize(

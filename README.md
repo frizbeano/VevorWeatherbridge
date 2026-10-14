@@ -52,7 +52,7 @@ Requires Home Assistant 2025.2 or newer.
 
 The port and station ID filter can be changed later with **Reconfigure**.
 
-Under **Configure** (options) you can enable **Weather Underground forwarding** and optionally override the Weather Underground station ID and key. Forwarding resolves Weather Underground through public DNS (8.8.8.8 / 1.1.1.1), so it works even though your local DNS points that hostname at Home Assistant.
+Under **Configure** (options) you can enable **Weather Underground forwarding** and optionally override the Weather Underground station ID and key. Forwarding looks up Weather Underground's real address with DNS-over-HTTPS (Cloudflare, then Google). That way it works even though your local DNS points that hostname at Home Assistant, and even if your router intercepts ordinary DNS queries.
 
 > **About port 80.** The station always uploads to port 80, so the integration opens its own listener there (separate from the Home Assistant UI on 8123). If something else on the Home Assistant host already uses port 80, such as the NGINX add-on, either free that port or have that service forward `/weatherstation/updateweatherstation.php` to the port you configure here.
 
@@ -140,7 +140,12 @@ Sensors are grouped under one device and go unavailable when the relay is stoppe
 
 ## Troubleshooting
 
-- **No sensors appear.** Check that the station's DNS lookup returns your Home Assistant IP (`nslookup rtupdate.wunderground.com <your-dns-server>`), and that port 80 on that host is reachable from the station's network.
+- **Only the "Last update" diagnostic sensor appears, and it's unavailable.** No uploads have reached Home Assistant yet. Measurement sensors are only created when the first upload arrives.
+  1. Check where the hostname points: `nslookup rtupdate.wunderground.com`. It must return your **Home Assistant** IP. A leftover override pointing at an old relay host is a common cause.
+  2. Check the listener: `curl http://<home-assistant-ip>/` should return `404: Not Found` from the integration, not time out.
+  3. Restart the station after changing DNS. It can keep using the old address for a while.
+  4. If you set a station ID filter, look in the Home Assistant log for "Ignoring uploads from station ID ...".
+- **"Last update" has a value, but some sensors are missing.** The station doesn't send those values. Download diagnostics to see exactly what it sends.
 - **Integration fails to set up with "Cannot listen on port 80".** Another service is using port 80. See [About port 80](#configuration).
 - **Debug logging** for the integration:
 

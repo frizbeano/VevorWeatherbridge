@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_STATION_ID,
@@ -31,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: WeatherBridgeConfigEntry
     )
     if entry.options.get(CONF_WU_FORWARD):
         station.forwarder = WundergroundForwarder(
+            async_get_clientsession(hass),
             entry.options.get(CONF_WU_STATION_ID) or None,
             entry.options.get(CONF_WU_STATION_KEY) or None,
         )

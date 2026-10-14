@@ -18,11 +18,11 @@ CONF_WU_FORWARD: Final = "wu_forward"
 CONF_WU_STATION_ID: Final = "wu_station_id"
 CONF_WU_STATION_KEY: Final = "wu_station_key"
 
-# Forwarding target. Resolved through public DNS because the local DNS is
-# normally overridden to point this hostname at Home Assistant itself.
+# Forwarding target. Its address is looked up with DNS-over-HTTPS because the
+# local DNS (and often anything sent to port 53) points it at Home Assistant.
 WU_HOST: Final = "rtupdate.wunderground.com"
-WU_URL: Final = f"http://{WU_HOST}{UPDATE_PATH}"
-WU_NAMESERVERS: Final = ["8.8.8.8", "1.1.1.1"]
+WU_DOH_URLS: Final = ["https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"]
+WU_MIN_DNS_TTL: Final = 300
 WU_TIMEOUT: Final = 10
 
 # Sensors become unavailable if the station stops reporting for this long.
