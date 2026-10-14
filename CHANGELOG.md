@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 ### Added
-- Bug report and feature request forms, contributing guide and security policy.
+- Troubleshooting guide covering the most common setup problems: "Upload to wunderground.com" not ticked on the station, the DNS override pointing at the wrong IP, and a station ID filter mismatch. It also has three commands to check each step, and a table of log messages and what they mean.
+- Bug report and feature request forms, a contributing guide and a security policy.
+- The Docker relay is now tested, and its image is built and smoke-tested on every change.
+- The repository now passes every HACS validation check, with none skipped.
 
 ## 1.0.2
 
