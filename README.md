@@ -211,22 +211,9 @@ logger:
 
 ---
 
-## Development
+## Contributing
 
-```bash
-pip install -r requirements_test.txt
-pytest
-ruff check . && ruff format --check .
-```
-
-### Icon
-
-The integration icon is in `custom_components/vevor_weatherbridge/brand/`. Home Assistant 2026.3 and newer load it from there; older versions show a placeholder. To change it, edit `assets/icon.svg` and export it as a trimmed, transparent square PNG at 256×256 (`icon.png`) and 512×512 (`icon@2x.png`).
-
-### Releasing
-
-1. Bump `version` in `custom_components/vevor_weatherbridge/manifest.json` and add an entry to [CHANGELOG.md](CHANGELOG.md).
-2. Commit, then create a GitHub release tagged with the same version (for example `v1.1.0`). HACS offers the new release as an update.
+Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the development setup, tests and the release process. To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ---
 

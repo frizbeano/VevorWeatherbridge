@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Bug report and feature request forms, contributing guide and security policy.
+
 ## 1.0.2
 
 ### Added

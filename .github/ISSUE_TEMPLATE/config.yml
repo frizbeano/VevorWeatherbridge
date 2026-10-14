@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/frizbeano/VevorWeatherbridge#troubleshooting
+    about: Most "no sensors" problems are solved here. Please check it first.
+  - name: Home Assistant community forum
+    url: https://community.home-assistant.io/
+    about: General Home Assistant questions.

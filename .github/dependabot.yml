@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Docker relay dependencies (requirements.txt) and the test harness (requirements_test.txt).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      relay:
+        patterns: ["*"]
+        exclude-patterns: ["pytest-homeassistant-custom-component"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # Stay on Python 3.12 until deliberately upgraded.
+      - dependency-name: python
+        update-types: [version-update:semver-minor, version-update:semver-major]

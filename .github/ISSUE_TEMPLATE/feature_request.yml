@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a new sensor, station model or option.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is it useful?
+  - type: textarea
+    id: sample
+    attributes:
+      label: Example upload
+      description: |
+        For new sensors or stations, paste the `last_upload` or `unrecognized_requests`
+        section from diagnostics, so we can see exactly what the station sends.
+      render: json
