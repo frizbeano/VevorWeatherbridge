@@ -1,160 +1,166 @@
-# Weather Station to Home Assistant Relay (Dockerized Python Version)
+# VEVOR Weatherbridge
 
-This project provides a lightweight, **Dockerized Python microservice** for ingesting weather data from a VEVOR 7-in-1 Wi-Fi Solar Self-Charging Weather Station (Model YT60234, or any station sending data in Weather Underground format) and forwarding it to Home Assistant via **MQTT**.
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![Validate](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/validate.yml/badge.svg)](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/validate.yml)
+[![Tests](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/tests.yml/badge.svg)](https://github.com/frizbeano/VevorWeatherbridge/actions/workflows/tests.yml)
 
----
+> This is a fork of [C9H13NO3-dev/VevorWeatherbridge](https://github.com/C9H13NO3-dev/VevorWeatherbridge), which created the original Docker/MQTT relay. This fork adds a native Home Assistant integration installable through HACS. See [Credits](#credits).
 
-## Features
+Get live data from a **VEVOR 7-in-1 Wi-Fi weather station** (model YT60234, or any station that uploads in the Weather Underground format) into Home Assistant, fully locally.
 
-- Accepts Weather Underground (WU) station GET requests (as sent by the VEVOR weather station)
-- Converts measurements to **metric** or **imperial** units based on the `UNITS` environment variable
-- Publishes sensor data to Home Assistant via MQTT using the auto-discovery format
-- All sensors appear under one device in Home Assistant
-- Dockerized for simple deployment anywhere
-- Responds with `success` so the weather station doesn’t retry
+The station only knows how to upload to Weather Underground. By pointing the Weather Underground hostname at Home Assistant with a DNS override, the uploads land in Home Assistant instead, and can optionally be passed on to Weather Underground as well.
 
----
+There are two ways to run it:
 
-## Quickstart
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/C9H13NO3-dev/weatherstation-ha-relay.git
-cd weatherstation-ha-relay
-```
-
-### 2. Configure the environment
-
-Edit the `docker-compose.yml` file and set the following variables:
-
-- `MQTT_HOST`: Hostname or IP of your MQTT broker
-- `MQTT_PORT`: Broker port (default `1883`)
-- `MQTT_USER` / `MQTT_PASSWORD`: Credentials if required
-- `DEVICE_ID`: Unique identifier for the weather station device (default `weather_station`)
-- `DEVICE_NAME`: Display name for the device in Home Assistant (default `Weather Station`)
-- `DEVICE_MANUFACTURER`: (optional) Manufacturer name shown in Home Assistant (default `VEVOR`)
-- `DEVICE_MODEL`: (optional) Model name (default `7-in-1 Weather Station`)
-- `UNITS`: `metric` (default) or `imperial`
-- `WU_FORWARD`: Set to `true` to also forward data to Weather Underground (default `false`)
-- `WU_USERNAME` / `WU_PASSWORD`: Credentials for Weather Underground (optional)
-
-Example:
-
-```yaml
-environment:
-  TZ: Europe/Berlin
-  MQTT_HOST: 192.168.1.100
-  MQTT_PORT: 1883
-  MQTT_USER: youruser
-  MQTT_PASSWORD: yourpass
-  DEVICE_ID: weather_station
-  DEVICE_NAME: "Backyard Weather"
-  DEVICE_MANUFACTURER: VEVOR
-  DEVICE_MODEL: "7-in-1 Weather Station"
-  # optional: "metric" (default) or "imperial"
-  UNITS: metric
-  # forward data to Weather Underground
-  WU_FORWARD: "false"
-  # credentials if forwarding
-  WU_USERNAME: yourWUuser
-  WU_PASSWORD: yourWUpass
-```
-
-### 3. Build and run
-
-```bash
-docker-compose up --build -d
-```
-
-The service now listens on port `80` for requests to `/weatherstation/updateweatherstation.php`.
-
+- **[Home Assistant integration](#home-assistant-integration-hacs)** (recommended), installed through HACS. No MQTT broker or extra container needed.
+- **[Standalone Docker relay](#standalone-docker-relay-mqtt)**, which publishes to Home Assistant over MQTT.
 
 ---
 
-## Station Configuration
+## Home Assistant integration (HACS)
 
-Redirect the weather station’s upload URL (`rtupdate.wunderground.com`) to the IP of your server running this container. The simplest way is using Pi-hole or custom DNS on your router.
+### Installation
 
-Example DNS override:
+1. In Home Assistant, open **HACS → ⋮ → Custom repositories**.
+2. Add `https://github.com/frizbeano/VevorWeatherbridge` with type **Integration**.
+3. Find **VEVOR Weatherbridge** in HACS, download it, and restart Home Assistant.
+4. Go to **Settings → Devices & services → Add integration → VEVOR Weatherbridge**.
 
-```
-rtupdate.wunderground.com    <your-server-ip>
-```
-**Note:** If your router has DNS rebind protection enabled, you must allow this domain in your router settings when overriding DNS with Pi-hole.
+Requires Home Assistant 2025.2 or newer.
 
-On the weather station, enable Weather Underground uploads with any station ID/key.
+### Configuration
+
+| Option | Description |
+| --- | --- |
+| Name | Name of the weather station device. |
+| Port | Port Home Assistant listens on for uploads. Default `80`. |
+| Station ID filter | Optional. Only accept uploads with this station ID. Leave empty to accept any. |
+
+The port and station ID filter can be changed later with **Reconfigure**.
+
+Under **Configure** (options) you can enable **Weather Underground forwarding** and optionally override the Weather Underground station ID and key. Forwarding resolves Weather Underground through public DNS (8.8.8.8 / 1.1.1.1), so it works even though your local DNS points that hostname at Home Assistant.
+
+> **About port 80.** The station always uploads to port 80, so the integration opens its own listener there (separate from the Home Assistant UI on 8123). If something else on the Home Assistant host already uses port 80, such as the NGINX add-on, either free that port or have that service forward `/weatherstation/updateweatherstation.php` to the port you configure here.
+
+### Sensors
+
+A sensor is created the first time the station reports that value, so you only get sensors your station actually sends.
+
+| Sensor | Station field |
+| --- | --- |
+| Temperature, Indoor temperature, Dew point, Wind chill, Heat index | `tempf`, `indoortempf`, `dewptf`, `windchillf`, `heatindexf` |
+| Humidity, Indoor humidity | `humidity`, `indoorhumidity` |
+| Relative pressure, Absolute pressure | `baromin`, `absbaromin` |
+| Wind speed, Wind gust, Wind direction | `windspeedmph`, `windgustmph`, `winddir` |
+| Rain rate | `rainin` |
+| Daily / Weekly / Monthly / Yearly rain | `dailyrainin`, `weeklyrainin`, `monthlyrainin`, `yearlyrainin` |
+| Solar radiation, UV index | `solarradiation`, `UV` |
+| Last update (diagnostic) | `dateutc` |
+
+**Units follow your Home Assistant unit system automatically**: metric installations get °C, hPa, km/h and mm, and imperial installations get °F, inHg, mph and in. Any sensor's unit can be changed in its entity settings. All measurement sensors record long-term statistics.
+
+Sensors become unavailable if the station hasn't reported for 15 minutes.
 
 ---
 
-## Endpoints
+## Station and DNS setup
 
-The service listens for GET requests at:
+This step is needed for both installation methods.
+
+1. Redirect `rtupdate.wunderground.com` to the IP of your Home Assistant host (or the Docker host). The easiest way is a local DNS record in Pi-hole, AdGuard Home, or your router:
+
+   ```
+   rtupdate.wunderground.com    <your-home-assistant-ip>
+   ```
+
+   If your router has **DNS rebind protection**, allow this domain, or the override will be blocked.
+
+2. In the station's app or setup page, enable **Weather Underground** uploads. Any station ID and key works, unless you also want to forward to a real Weather Underground account.
+
+The station then sends requests like:
 
 ```
-/weatherstation/updateweatherstation.php
-```
-
-With query parameters matching the WU format, e.g.:
-
-```
-http://<your-server-ip>/weatherstation/updateweatherstation.php?ID=XXXXX&PASSWORD=XXXXX&dateutc=xxxx-x-xx+xx:xx:xx&baromin=x&tempf=x&humidity=x&dewptf=x&rainin=x&dailyrainin=x&winddir=x&windspeedmph=x&windgustmph=x&UV=x&solarRadiation=x
+GET /weatherstation/updateweatherstation.php?ID=...&PASSWORD=...&dateutc=2026-10-14+12:00:00&tempf=68.0&humidity=55&baromin=29.92&...
 ```
 
 ---
 
-## How it Works
+## Standalone Docker relay (MQTT)
 
-1. The weather station uploads data to this endpoint.
-2. The service converts units to metric or keeps imperial values depending on `UNITS`.
-3. Each value is published to Home Assistant via MQTT, auto-discovered as a sensor, and grouped under the configured device.
-4. The endpoint returns `success` to acknowledge the update.
+Use this if Home Assistant runs somewhere that can't listen on port 80, or if you prefer MQTT. It needs an MQTT broker, and the [MQTT integration](https://www.home-assistant.io/integrations/mqtt/) set up in Home Assistant.
 
-### Home Assistant Sensor Entities
+1. Clone the repository:
 
-The following sensors are created or updated and will appear under the device specified by `DEVICE_NAME`:
+   ```bash
+   git clone https://github.com/frizbeano/VevorWeatherbridge.git
+   cd VevorWeatherbridge
+   ```
 
-*Units in parentheses assume `UNITS=metric`; values switch to imperial when `UNITS=imperial`.*
+2. Edit the environment in `docker-compose.yml`:
 
-- `sensor.weather_station_barometric_pressure` (hPa)
-- `sensor.weather_station_temperature` (°C)
-- `sensor.weather_station_humidity` (%)
-- `sensor.weather_station_dew_point` (°C)
-- `sensor.weather_station_rainfall` (mm)
-- `sensor.weather_station_daily_rainfall` (mm)
-- `sensor.weather_station_wind_direction` (°)
-- `sensor.weather_station_wind_speed` (km/h)
-- `sensor.weather_station_wind_gust_speed` (km/h)
-- `sensor.weather_station_uv_index` (index)
-- `sensor.weather_station_solar_radiation` (W/m²)
+   | Variable | Default | Description |
+   | --- | --- | --- |
+   | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | MQTT broker. |
+   | `MQTT_USER` / `MQTT_PASSWORD` | – | Broker credentials, if required. |
+   | `MQTT_PREFIX` | `homeassistant` | MQTT discovery prefix. |
+   | `DEVICE_ID` | `weather_station` | Unique ID for the device. Changing it creates new entities. |
+   | `DEVICE_NAME` | `Weather Station` | Device name in Home Assistant. |
+   | `DEVICE_MANUFACTURER` / `DEVICE_MODEL` | `VEVOR` / `7-in-1 Weather Station` | Device info. |
+   | `UNITS` | `metric` | `metric` or `imperial`. |
+   | `TZ` | `UTC` | Time zone for the `measured_on` attribute. |
+   | `PORT` | `80` | Port to listen on inside the container. |
+   | `WU_FORWARD` | `false` | Also forward uploads to Weather Underground. |
+   | `WU_USERNAME` / `WU_PASSWORD` | – | Override the station ID and key when forwarding. |
+   | `LOG_LEVEL` | `INFO` | Logging verbosity. |
 
-You can use these entities directly in your Home Assistant dashboards or automations.
+3. Start it:
 
+   ```bash
+   docker compose up --build -d
+   docker compose logs -f
+   ```
+
+Sensors are grouped under one device and go unavailable when the relay is stopped.
 
 ---
 
 ## Troubleshooting
 
-- Ensure the container is reachable on port 80 from your network.
-- Check that your DNS or Pi-hole setup correctly redirects the WU domain.
-- Verify your MQTT broker settings.
-- Review logs with:
+- **No sensors appear.** Check that the station's DNS lookup returns your Home Assistant IP (`nslookup rtupdate.wunderground.com <your-dns-server>`), and that port 80 on that host is reachable from the station's network.
+- **Integration fails to set up with "Cannot listen on port 80".** Another service is using port 80. See [About port 80](#configuration).
+- **Debug logging** for the integration:
+
+  ```yaml
+  logger:
+    logs:
+      custom_components.vevor_weatherbridge: debug
+  ```
+
+- **Diagnostics.** Download them from the integration's device page. They include the last upload, with the station ID and key removed.
+
+---
+
+## Development
 
 ```bash
-docker-compose logs -f
+pip install -r requirements_test.txt
+pytest
+ruff check . && ruff format --check .
 ```
 
-Add logging or print statements to `weatherstation.py` for further debugging.
+### Releasing
+
+1. Bump `version` in `custom_components/vevor_weatherbridge/manifest.json` and add an entry to [CHANGELOG.md](CHANGELOG.md).
+2. Commit, then create a GitHub release tagged with the same version (for example `v1.1.0`). HACS offers the new release as an update.
 
 ---
 
 ## License
 
-This project is licensed under the [CC0 1.0 Universal](LICENSE).
+[CC0 1.0 Universal](LICENSE).
 
----
+## Credits
 
-## Acknowledgements
-
-- Original Weather Underground relay script inspiration by [@vlovmx](https://github.com/vlovmx)
-- Python rewrite and containerization by C9H13NO3-dev
+- **[@C9H13NO3-dev](https://github.com/C9H13NO3-dev)** wrote the original [VevorWeatherbridge](https://github.com/C9H13NO3-dev/VevorWeatherbridge): the Python relay, Docker setup, MQTT discovery, and Weather Underground forwarding this project builds on.
+- **[@vlovmx](https://github.com/vlovmx)** wrote the Weather Underground relay script that inspired the original.
+- **[@frizbeano](https://github.com/frizbeano)** maintains this fork and the Home Assistant integration.

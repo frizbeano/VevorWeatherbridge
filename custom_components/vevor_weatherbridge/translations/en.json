@@ -1,0 +1,125 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up VEVOR Weatherbridge",
+        "description": "Home Assistant will listen for uploads from your weather station. Point the station's Weather Underground upload at Home Assistant (usually by overriding DNS for `rtupdate.wunderground.com`). The station always uploads to port 80.",
+        "data": {
+          "name": "Name",
+          "port": "Port",
+          "station_id": "Station ID filter"
+        },
+        "data_description": {
+          "name": "Name of the weather station device.",
+          "port": "Port to listen on. Keep 80 unless a reverse proxy forwards uploads from port 80.",
+          "station_id": "Only accept uploads with this station ID. Leave empty to accept any station."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure VEVOR Weatherbridge",
+        "data": {
+          "port": "Port",
+          "station_id": "Station ID filter"
+        },
+        "data_description": {
+          "port": "Port to listen on. Keep 80 unless a reverse proxy forwards uploads from port 80.",
+          "station_id": "Only accept uploads with this station ID. Leave empty to accept any station."
+        }
+      }
+    },
+    "error": {
+      "port_in_use": "That port is already in use by another service.",
+      "port_permission": "Home Assistant does not have permission to listen on that port."
+    },
+    "abort": {
+      "already_configured": "A weather station is already listening on that port.",
+      "reconfigure_successful": "Reconfiguration was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Weather Underground forwarding",
+        "data": {
+          "wu_forward": "Forward uploads to Weather Underground",
+          "wu_station_id": "Weather Underground station ID",
+          "wu_station_key": "Weather Underground station key"
+        },
+        "data_description": {
+          "wu_forward": "Also send each upload on to Weather Underground, as the station would without the DNS override.",
+          "wu_station_id": "Leave empty to use the ID the station sends.",
+          "wu_station_key": "Leave empty to use the key the station sends."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "tempf": {
+        "name": "Temperature"
+      },
+      "indoortempf": {
+        "name": "Indoor temperature"
+      },
+      "dewptf": {
+        "name": "Dew point"
+      },
+      "windchillf": {
+        "name": "Wind chill"
+      },
+      "heatindexf": {
+        "name": "Heat index"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "indoorhumidity": {
+        "name": "Indoor humidity"
+      },
+      "baromin": {
+        "name": "Relative pressure"
+      },
+      "absbaromin": {
+        "name": "Absolute pressure"
+      },
+      "windspeedmph": {
+        "name": "Wind speed"
+      },
+      "windgustmph": {
+        "name": "Wind gust"
+      },
+      "winddir": {
+        "name": "Wind direction"
+      },
+      "rainin": {
+        "name": "Rain rate"
+      },
+      "dailyrainin": {
+        "name": "Daily rain"
+      },
+      "weeklyrainin": {
+        "name": "Weekly rain"
+      },
+      "monthlyrainin": {
+        "name": "Monthly rain"
+      },
+      "yearlyrainin": {
+        "name": "Yearly rain"
+      },
+      "solarradiation": {
+        "name": "Solar radiation"
+      },
+      "uv": {
+        "name": "UV index"
+      },
+      "last_update": {
+        "name": "Last update"
+      }
+    }
+  },
+  "exceptions": {
+    "cannot_listen": {
+      "message": "Cannot listen on port {port}: {error}"
+    }
+  }
+}
