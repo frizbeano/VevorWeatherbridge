@@ -157,7 +157,7 @@ ruff check . && ruff format --check .
 
 ## License
 
-[CC0 1.0 Universal](LICENSE).
+[MIT](LICENSE). The original project by @C9H13NO3-dev was released under [CC0 1.0](https://github.com/C9H13NO3-dev/VevorWeatherbridge/blob/main/LICENSE) (public domain dedication), which allows this fork to be relicensed.
 
 ## Credits
 

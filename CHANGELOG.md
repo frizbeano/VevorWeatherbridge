@@ -12,6 +12,9 @@ First release of this fork of [C9H13NO3-dev/VevorWeatherbridge](https://github.c
 - Diagnostics download, with credentials removed.
 - Tests, plus CI for hassfest, HACS validation, ruff and pytest.
 
+### Changed
+- License changed from CC0 1.0 to MIT, so the repository passes HACS validation.
+
 ### Fixed (Docker/MQTT relay)
 - Crash at startup with paho-mqtt 2.x. Dependencies are now pinned.
 - A malformed value returned an HTTP 500 error and made the station retry.
