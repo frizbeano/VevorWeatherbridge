@@ -26,5 +26,3 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # Brand icons live in home-assistant/brands; not required for custom repositories.
-          ignore: brands
