@@ -7,3 +7,7 @@ venv/
 .coverage
 coverage.xml
 .venv-relay/
+
+# Home Assistant diagnostics downloads (contain details of your installation)
+config_entry-*.json
+device-*.json
