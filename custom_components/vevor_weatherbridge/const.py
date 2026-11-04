@@ -16,12 +16,14 @@ DEFAULT_PORT: Final = 80
 DEFAULT_NAME: Final = "Weather Station"
 
 CONF_STATION_ID: Final = "station_id"
+CONF_STATION_ADDRESS: Final = "station_address"
 CONF_WU_FORWARD: Final = "wu_forward"
 CONF_WU_STATION_ID: Final = "wu_station_id"
 CONF_WU_STATION_KEY: Final = "wu_station_key"
 
-# Forwarding target. Its address is looked up with DNS-over-HTTPS because the
-# local DNS (and often anything sent to port 53) points it at Home Assistant.
+# Forwarding target, always reached over HTTPS. Its address is looked up with
+# DNS-over-HTTPS because the local DNS (and often anything sent to port 53)
+# points it at Home Assistant.
 WU_HOST: Final = "rtupdate.wunderground.com"
 WU_DOH_URLS: Final = ["https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"]
 WU_MIN_DNS_TTL: Final = 300

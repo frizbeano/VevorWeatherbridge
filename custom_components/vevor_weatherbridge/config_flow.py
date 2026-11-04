@@ -18,6 +18,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv, selector
 
 from .const import (
+    CONF_STATION_ADDRESS,
     CONF_STATION_ID,
     CONF_WU_FORWARD,
     CONF_WU_STATION_ID,
@@ -26,6 +27,7 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
 )
+from .station import normalize_address
 
 
 def check_port(port: int) -> str | None:
@@ -48,6 +50,23 @@ def _connection_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
             CONF_STATION_ID,
             description={"suggested_value": defaults.get(CONF_STATION_ID)},
         ): str,
+        vol.Optional(
+            CONF_STATION_ADDRESS,
+            description={"suggested_value": defaults.get(CONF_STATION_ADDRESS)},
+        ): str,
+    }
+
+
+def _connection_data(user_input: dict[str, Any], errors: dict[str, str]) -> dict[str, Any]:
+    """Return the cleaned connection settings, adding an error if they're invalid."""
+    raw_address = user_input.get(CONF_STATION_ADDRESS, "").strip()
+    address = normalize_address(raw_address)
+    if raw_address and address is None:
+        errors[CONF_STATION_ADDRESS] = "invalid_address"
+    return {
+        CONF_PORT: user_input[CONF_PORT],
+        CONF_STATION_ID: user_input.get(CONF_STATION_ID, "").strip(),
+        CONF_STATION_ADDRESS: address or "",
     }
 
 
@@ -63,16 +82,11 @@ class WeatherBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
             port = user_input[CONF_PORT]
             await self.async_set_unique_id(str(port))
             self._abort_if_unique_id_configured()
-            if error := await self.hass.async_add_executor_job(check_port, port):
+            data = _connection_data(user_input, errors)
+            if not errors and (error := await self.hass.async_add_executor_job(check_port, port)):
                 errors["base"] = error
-            else:
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME],
-                    data={
-                        CONF_PORT: port,
-                        CONF_STATION_ID: user_input.get(CONF_STATION_ID, "").strip(),
-                    },
-                )
+            if not errors:
+                return self.async_create_entry(title=user_input[CONF_NAME], data=data)
 
         schema = vol.Schema(
             {
@@ -85,12 +99,13 @@ class WeatherBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Change the listening port or station filter."""
+        """Change the listening port or station filters."""
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
             port = user_input[CONF_PORT]
-            if port != entry.data[CONF_PORT]:
+            data = _connection_data(user_input, errors)
+            if not errors and port != entry.data[CONF_PORT]:
                 await self.async_set_unique_id(str(port))
                 self._abort_if_unique_id_configured()
                 if error := await self.hass.async_add_executor_job(check_port, port):
@@ -99,10 +114,7 @@ class WeatherBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=str(port),
-                    data_updates={
-                        CONF_PORT: port,
-                        CONF_STATION_ID: user_input.get(CONF_STATION_ID, "").strip(),
-                    },
+                    data_updates=data,
                 )
 
         return self.async_show_form(
@@ -123,10 +135,14 @@ class WeatherBridgeOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            if user_input[CONF_WU_FORWARD] and not self.config_entry.data.get(CONF_STATION_ADDRESS):
+                errors["base"] = "station_address_required"
+            else:
+                return self.async_create_entry(data=user_input)
 
-        options = self.config_entry.options
+        options = user_input or self.config_entry.options
         schema = vol.Schema(
             {
                 vol.Required(CONF_WU_FORWARD, default=options.get(CONF_WU_FORWARD, False)): bool,
@@ -142,4 +158,4 @@ class WeatherBridgeOptionsFlow(OptionsFlow):
                 ),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

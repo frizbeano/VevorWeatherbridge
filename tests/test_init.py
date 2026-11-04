@@ -10,20 +10,24 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.vevor_weatherbridge.const import (
+    CONF_STATION_ADDRESS,
     CONF_STATION_ID,
     CONF_WU_FORWARD,
     CONF_WU_STATION_ID,
+    DOMAIN,
     UPDATE_PATH,
     WU_DOH_URLS,
     WU_HOST,
 )
 from custom_components.vevor_weatherbridge.station import (
     WundergroundForwarder,
+    normalize_address,
     parse_value,
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PORT, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 UPLOAD = {
@@ -46,12 +50,12 @@ UPLOAD = {
 }
 
 
-async def _upload(port: int, params: dict[str, str]) -> str:
+async def _upload(port: int, params: dict[str, str], status: int = 200) -> str:
     async with (
         ClientSession() as session,
         session.get(f"http://127.0.0.1:{port}{UPDATE_PATH}", params=params) as resp,
     ):
-        assert resp.status == 200
+        assert resp.status == status
         return await resp.text()
 
 
@@ -200,22 +204,91 @@ async def test_port_in_use_retries(hass: HomeAssistant, mock_config_entry: MockC
     assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
 
 
-async def test_forwarding(hass: HomeAssistant, free_port: int) -> None:
-    """Test uploads are forwarded to Weather Underground when enabled."""
-    entry = MockConfigEntry(
-        domain="vevor_weatherbridge",
+def _entry(port: int, address: str, **options: object) -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
         title="Backyard",
-        unique_id=str(free_port),
-        data={CONF_PORT: free_port},
-        options={CONF_WU_FORWARD: True, CONF_WU_STATION_ID: "KXX1"},
+        unique_id=str(port),
+        data={CONF_PORT: port, CONF_STATION_ID: "", CONF_STATION_ADDRESS: address},
+        options=options,
     )
+
+
+async def test_station_address_filter(
+    hass: HomeAssistant, free_port: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test only the configured address can reach the listener, and it is forwarded."""
+    entry = _entry(free_port, "192.168.1.50", **{CONF_WU_FORWARD: True})
+    with patch.object(WundergroundForwarder, "async_forward", AsyncMock()) as forward:
+        await _setup(hass, entry)
+        for _ in range(2):
+            await _upload(free_port, UPLOAD, status=403)
+        async with (
+            ClientSession() as session,
+            session.get(f"http://127.0.0.1:{free_port}/data/report/") as resp,
+        ):
+            assert resp.status == 403
+        await hass.async_block_till_done()
+
+        assert hass.states.get("sensor.backyard_temperature") is None
+        assert not entry.runtime_data.unrecognized_requests
+        assert caplog.text.count("the station address filter only accepts 192.168.1.50") == 1
+        forward.assert_not_called()
+
+        entry.runtime_data.station_address = "127.0.0.1"
+        await _upload(free_port, UPLOAD)
+        await hass.async_block_till_done()
+    assert hass.states.get("sensor.backyard_temperature") is not None
+    forward.assert_awaited_once()
+    # The original query, including credentials, is what gets forwarded.
+    assert forward.call_args.args[0]["PASSWORD"] == "hunter2"
+
+
+async def test_forwarding_needs_station_address(
+    hass: HomeAssistant, free_port: int, issue_registry: ir.IssueRegistry
+) -> None:
+    """Test forwarding stays off, with a repair issue, until the address is set."""
+    entry = _entry(free_port, "", **{CONF_WU_FORWARD: True, CONF_WU_STATION_ID: "KXX1"})
+    issue_id = f"forwarding_needs_station_address_{entry.entry_id}"
     with patch.object(WundergroundForwarder, "async_forward", AsyncMock()) as forward:
         await _setup(hass, entry)
         await _upload(free_port, UPLOAD)
         await hass.async_block_till_done()
-    forward.assert_awaited_once()
-    # The original query, including credentials, is what gets forwarded.
-    assert forward.call_args.args[0]["PASSWORD"] == "hunter2"
+    forward.assert_not_called()
+    assert entry.runtime_data.forwarder is None
+    assert issue_registry.async_get_issue(DOMAIN, issue_id)
+
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_STATION_ADDRESS: "127.0.0.1"}
+    )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.forwarder is not None
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_STATION_ADDRESS: ""})
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(DOMAIN, issue_id)
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("192.168.1.50", "192.168.1.50"),
+        (" 192.168.1.50 ", "192.168.1.50"),
+        ("::ffff:192.168.1.50", "192.168.1.50"),
+        ("FE80::1", "fe80::1"),
+        ("station.lan", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_normalize_address(raw: str | None, expected: str | None) -> None:
+    """Test station addresses are compared in canonical form."""
+    assert normalize_address(raw) == expected
 
 
 def _doh_answer(address: str) -> dict:
@@ -227,11 +300,18 @@ async def test_forwarder_overrides_credentials(
 ) -> None:
     """Test uploads go to the DNS-over-HTTPS address with configured credentials."""
     aioclient_mock.get(WU_DOH_URLS[0], json=_doh_answer("34.0.0.1"))
-    aioclient_mock.get(f"http://34.0.0.1{UPDATE_PATH}", text="success")
-    forwarder = WundergroundForwarder(async_get_clientsession(hass), "KXX1", "key")
+    aioclient_mock.get(f"https://34.0.0.1{UPDATE_PATH}", text="success")
+    session = async_get_clientsession(hass)
+    forwarder = WundergroundForwarder(session, "KXX1", "key")
 
-    await forwarder.async_forward({"ID": "ABC", "PASSWORD": "pw", "tempf": "1"})
-    await forwarder.async_forward({"ID": "ABC", "PASSWORD": "pw", "tempf": "2"})
+    with patch.object(session, "get", wraps=session.get) as get:
+        await forwarder.async_forward({"ID": "ABC", "PASSWORD": "pw", "tempf": "1"})
+        await forwarder.async_forward({"ID": "ABC", "PASSWORD": "pw", "tempf": "2"})
+
+    # Sent over HTTPS, with the certificate checked against the real hostname.
+    upload = next(call for call in get.call_args_list if call.args[0].startswith("https://34."))
+    assert upload.kwargs["server_hostname"] == WU_HOST
+    assert "ssl" not in upload.kwargs
 
     # The address is cached, so DNS is only queried once.
     calls = [call for call in aioclient_mock.mock_calls if call[1].host == "34.0.0.1"]

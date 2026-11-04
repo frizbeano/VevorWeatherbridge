@@ -49,10 +49,11 @@ Requires Home Assistant 2025.2 or newer.
 | Name | Name of the weather station device. |
 | Port | Port Home Assistant listens on for uploads. Default `80`. |
 | Station ID filter | Optional. Only accept uploads with this station ID. Leave empty to accept any. |
+| Station IP address | Optional, but required for forwarding. Only accept requests from this IP address; everything else gets HTTP 403. Give the station a fixed address (a DHCP reservation) in your router first. If a reverse proxy passes uploads on, enter the proxy's address. |
 
-The port and station ID filter can be changed later with **Reconfigure**.
+The port, station ID filter and station IP address can be changed later with **Reconfigure**.
 
-Under **Configure** (options) you can enable **Weather Underground forwarding** and optionally override the Weather Underground station ID and key. Forwarding looks up Weather Underground's real address with DNS-over-HTTPS (Cloudflare, then Google). That way it works even though your local DNS points that hostname at Home Assistant, and even if your router intercepts ordinary DNS queries.
+Under **Configure** (options) you can enable **Weather Underground forwarding** and optionally override the Weather Underground station ID and key. Forwarding needs the station IP address to be set, so that other devices on your network can't send data to Weather Underground under your key. If forwarding was turned on before the address was set, it pauses and Home Assistant shows a repair until you add the address. Forwarded uploads go over HTTPS, with the certificate checked against `rtupdate.wunderground.com`, so your station key isn't sent in the clear even though the station itself only uses plain HTTP. Forwarding looks up Weather Underground's real address with DNS-over-HTTPS (Cloudflare, then Google). That way it works even though your local DNS points that hostname at Home Assistant, and even if your router intercepts ordinary DNS queries.
 
 > **About port 80.** The station always uploads to port 80, so the integration opens its own listener there (separate from the Home Assistant UI on 8123). If something else on the Home Assistant host already uses port 80, such as the NGINX add-on, either free that port or have that service forward `/weatherstation/updateweatherstation.php` to the port you configure here.
 
@@ -187,6 +188,7 @@ The log messages map to the problem like this:
 | --- | --- |
 | *(nothing at all)* | Nothing is reaching Home Assistant: check upload is enabled, then DNS. |
 | `Ignoring uploads from station ID X` | Station ID filter mismatch. |
+| `Ignoring requests from X: the station address filter only accepts Y` | The station's IP address changed, or a reverse proxy is in between. Fix the address with **Reconfigure**. |
 | `Received GET /… which isn't a weather station upload` | Unrecognized format. Please open an issue. |
 | `Upload from … with fields: …` (debug) | Uploads are arriving normally. |
 
