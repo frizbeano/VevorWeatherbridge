@@ -6,6 +6,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.vevor_weatherbridge.const import (
+    CONF_STATION_ADDRESS,
     CONF_STATION_ID,
     CONF_WU_FORWARD,
     CONF_WU_STATION_ID,
@@ -28,12 +29,21 @@ async def test_user_flow(hass: HomeAssistant) -> None:
     with patch("custom_components.vevor_weatherbridge.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_NAME: "Backyard", CONF_PORT: 8080, CONF_STATION_ID: " ABC123 "},
+            {
+                CONF_NAME: "Backyard",
+                CONF_PORT: 8080,
+                CONF_STATION_ID: " ABC123 ",
+                CONF_STATION_ADDRESS: " 192.168.1.50 ",
+            },
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Backyard"
-    assert result["data"] == {CONF_PORT: 8080, CONF_STATION_ID: "ABC123"}
+    assert result["data"] == {
+        CONF_PORT: 8080,
+        CONF_STATION_ID: "ABC123",
+        CONF_STATION_ADDRESS: "192.168.1.50",
+    }
     assert result["result"].unique_id == "8080"
 
 
@@ -53,6 +63,23 @@ async def test_user_flow_port_error(hass: HomeAssistant, mock_check_port) -> Non
             result["flow_id"], {CONF_NAME: "Backyard", CONF_PORT: 80}
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_user_flow_invalid_address(hass: HomeAssistant) -> None:
+    """Test a station address that isn't an IP address is rejected."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_NAME: "Backyard", CONF_PORT: 80, CONF_STATION_ADDRESS: "station"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_STATION_ADDRESS: "invalid_address"}
+
+    with patch("custom_components.vevor_weatherbridge.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_NAME: "Backyard", CONF_PORT: 80}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_STATION_ADDRESS] == ""
 
 
 async def test_user_flow_duplicate_port(hass: HomeAssistant) -> None:
@@ -78,18 +105,33 @@ async def test_reconfigure(hass: HomeAssistant) -> None:
 
     with patch("custom_components.vevor_weatherbridge.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_PORT: 8080, CONF_STATION_ID: "XYZ"}
+            result["flow_id"],
+            {CONF_PORT: 8080, CONF_STATION_ID: "XYZ", CONF_STATION_ADDRESS: "invalid"},
+        )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_STATION_ADDRESS: "invalid_address"}
+
+    with patch("custom_components.vevor_weatherbridge.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PORT: 8080, CONF_STATION_ID: "XYZ", CONF_STATION_ADDRESS: "192.168.1.50"},
         )
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.unique_id == "8080"
-    assert entry.data == {CONF_PORT: 8080, CONF_STATION_ID: "XYZ"}
+    assert entry.data == {
+        CONF_PORT: 8080,
+        CONF_STATION_ID: "XYZ",
+        CONF_STATION_ADDRESS: "192.168.1.50",
+    }
 
 
 async def test_options_flow(hass: HomeAssistant) -> None:
     """Test configuring Weather Underground forwarding."""
-    entry = MockConfigEntry(domain=DOMAIN, unique_id="80", data={CONF_PORT: 80})
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id="80", data={CONF_PORT: 80, CONF_STATION_ADDRESS: "192.168.1.50"}
+    )
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
@@ -100,3 +142,22 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         result = await hass.config_entries.options.async_configure(result["flow_id"], options)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == options
+
+
+async def test_options_flow_needs_station_address(hass: HomeAssistant) -> None:
+    """Test forwarding can't be turned on until uploads are limited to the station."""
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="80", data={CONF_PORT: 80})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_WU_FORWARD: True}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "station_address_required"}
+
+    with patch("custom_components.vevor_weatherbridge.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_WU_FORWARD: False}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY

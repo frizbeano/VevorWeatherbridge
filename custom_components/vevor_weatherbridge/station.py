@@ -47,6 +47,23 @@ def parse_value(raw: str | None) -> float | None:
     return value
 
 
+def normalize_address(raw: str | None) -> str | None:
+    """Return an IP address in canonical form, or None if it isn't one.
+
+    IPv4 addresses that arrive mapped into IPv6 (::ffff:a.b.c.d) are unmapped,
+    so a dual-stack listener still matches an IPv4 station address.
+    """
+    if not raw:
+        return None
+    try:
+        address = ipaddress.ip_address(raw.strip())
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return str(address)
+
+
 def parse_dateutc(raw: str | None) -> datetime:
     """Parse the station's `dateutc` field, falling back to now."""
     if raw and raw.lower() != "now":
@@ -68,11 +85,13 @@ class WeatherStation:
         entry_id: str,
         port: int,
         station_id: str | None,
+        station_address: str | None = None,
     ) -> None:
         """Initialize the station."""
         self.hass = hass
         self.port = port
         self.station_id = station_id
+        self.station_address = normalize_address(station_address)
         self.signal_update = f"vevor_weatherbridge_update_{entry_id}"
         self.data: dict[str, float] = {}
         self.last_update: datetime | None = None
@@ -82,6 +101,7 @@ class WeatherStation:
         self._runner: web.AppRunner | None = None
         self._stale_unsub: CALLBACK_TYPE | None = None
         self._rejected_ids: set[str | None] = set()
+        self._rejected_addresses: set[str | None] = set()
         # Recent requests that weren't uploads, for troubleshooting via diagnostics.
         self.unrecognized_requests: deque[dict[str, str]] = deque(maxlen=10)
 
@@ -116,6 +136,9 @@ class WeatherStation:
 
     async def _handle_request(self, request: web.Request) -> web.Response:
         """Handle a request. Answer uploads with `success` so the station never retries."""
+        if not self._caller_allowed(request.remote):
+            raise web.HTTPForbidden
+
         if not request.path.lower().endswith(UPDATE_PATH_SUFFIX):
             self._log_unrecognized(request)
             raise web.HTTPNotFound
@@ -132,6 +155,22 @@ class WeatherStation:
         )
         self.async_process_upload(query)
         return web.Response(text="success\n")
+
+    def _caller_allowed(self, remote: str | None) -> bool:
+        """Return True if the station address filter accepts this caller."""
+        if self.station_address is None:
+            return True
+        caller = normalize_address(remote)
+        if caller == self.station_address:
+            return True
+        if caller not in self._rejected_addresses:
+            self._rejected_addresses.add(caller)
+            _LOGGER.warning(
+                "Ignoring requests from %s: the station address filter only accepts %s",
+                remote,
+                self.station_address,
+            )
+        return False
 
     def _log_unrecognized(self, request: web.Request) -> None:
         """Log a request that isn't an upload, once per method and path."""
@@ -202,8 +241,9 @@ class WundergroundForwarder:
     The local DNS points the Weather Underground hostname back at Home
     Assistant, and many routers also intercept plain DNS sent to public
     servers. So the real address is looked up with DNS-over-HTTPS, which can't
-    be intercepted, and the upload is sent to that IP with the proper Host
-    header.
+    be intercepted, and the upload is sent to that IP over HTTPS. The hostname
+    is still used for SNI and certificate verification, so the station key
+    never travels in the clear and only reaches the real Weather Underground.
     """
 
     def __init__(
@@ -263,9 +303,10 @@ class WundergroundForwarder:
             return
         try:
             async with self._session.get(
-                f"http://{address}{UPDATE_PATH}",
+                f"https://{address}{UPDATE_PATH}",
                 params=params,
                 headers={"Host": WU_HOST},
+                server_hostname=WU_HOST,
                 timeout=ClientTimeout(total=WU_TIMEOUT),
             ) as resp:
                 body = (await resp.text()).strip()

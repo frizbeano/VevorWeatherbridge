@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+- **Station IP address** setting, in setup and **Reconfigure**. When it's set, requests from any other address are refused with HTTP 403 before anything is processed, and a warning is logged once per address.
+
+### Changed
+- Weather Underground forwarding now uses HTTPS, with the certificate checked against `rtupdate.wunderground.com`. Previously the station key was forwarded over plain HTTP.
+- Weather Underground forwarding now requires the station IP address, so other devices on your network can't push data under your key. **If you already use forwarding, it pauses after updating** and Home Assistant shows a repair. Reconfigure the integration and enter the station's IP address to resume.
+
 ## 1.1.0
 
 ### Added

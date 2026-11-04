@@ -7,29 +7,34 @@
         "data": {
           "name": "Name",
           "port": "Port",
-          "station_id": "Station ID filter"
+          "station_id": "Station ID filter",
+          "station_address": "Station IP address"
         },
         "data_description": {
           "name": "Name of the weather station device.",
           "port": "Port to listen on. Keep 80 unless a reverse proxy forwards uploads from port 80.",
-          "station_id": "Only accept uploads with this station ID. Leave empty to accept any station."
+          "station_id": "Only accept uploads with this station ID. Leave empty to accept any station.",
+          "station_address": "Only accept uploads from this IP address, such as 192.168.1.50. Give the station a fixed address in your router first. If a reverse proxy passes uploads on, enter the proxy's address. Required for Weather Underground forwarding."
         }
       },
       "reconfigure": {
         "title": "Reconfigure VEVOR Weatherbridge",
         "data": {
           "port": "Port",
-          "station_id": "Station ID filter"
+          "station_id": "Station ID filter",
+          "station_address": "Station IP address"
         },
         "data_description": {
           "port": "Port to listen on. Keep 80 unless a reverse proxy forwards uploads from port 80.",
-          "station_id": "Only accept uploads with this station ID. Leave empty to accept any station."
+          "station_id": "Only accept uploads with this station ID. Leave empty to accept any station.",
+          "station_address": "Only accept uploads from this IP address, such as 192.168.1.50. Give the station a fixed address in your router first. If a reverse proxy passes uploads on, enter the proxy's address. Required for Weather Underground forwarding."
         }
       }
     },
     "error": {
       "port_in_use": "That port is already in use by another service.",
-      "port_permission": "Home Assistant does not have permission to listen on that port."
+      "port_permission": "Home Assistant does not have permission to listen on that port.",
+      "invalid_address": "Enter an IP address, such as 192.168.1.50."
     },
     "abort": {
       "already_configured": "A weather station is already listening on that port.",
@@ -46,11 +51,14 @@
           "wu_station_key": "Weather Underground station key"
         },
         "data_description": {
-          "wu_forward": "Also send each upload on to Weather Underground, as the station would without the DNS override.",
+          "wu_forward": "Also send each upload on to Weather Underground over HTTPS, as the station would without the DNS override. Requires the station IP address, set by reconfiguring the integration.",
           "wu_station_id": "Leave empty to use the ID the station sends.",
           "wu_station_key": "Leave empty to use the key the station sends."
         }
       }
+    },
+    "error": {
+      "station_address_required": "Set the station IP address first (reconfigure the integration), so only your station can upload under your Weather Underground key."
     }
   },
   "entity": {
@@ -115,6 +123,12 @@
       "last_update": {
         "name": "Last update"
       }
+    }
+  },
+  "issues": {
+    "forwarding_needs_station_address": {
+      "title": "Weather Underground forwarding is paused for {name}",
+      "description": "Forwarding now only runs when uploads are restricted to the station's IP address, so other devices on your network can't send data to Weather Underground under your key. Reconfigure {name} and enter the station IP address to resume forwarding."
     }
   },
   "exceptions": {
